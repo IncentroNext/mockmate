@@ -121,11 +121,11 @@ func (mr MockRule) matches(method string, u *url.URL, body []byte) bool {
 }
 
 type MockResponse struct {
-	ContentType string `json:"content_type"`
-	TextBody    string `json:"text_body"`
-	JsonBody    string `json:"json_body"`
-	BytesBody   []byte `json:"bytes_body"`
-	StatusCode  int    `json:"status_code"`
+	ContentType string                 `json:"content_type"`
+	TextBody    string                 `json:"text_body"`
+	JsonBody    map[string]interface{} `json:"json_body"`
+	BytesBody   []byte                 `json:"bytes_body"`
+	StatusCode  int                    `json:"status_code"`
 }
 
 const collection = "services/mockmate/mapping"
@@ -168,7 +168,20 @@ func (h *handler) reset(ctx context.Context) {
 	if h.client == nil {
 		return
 	}
-
+	iter := h.client.Collection(collection).Documents(ctx)
+	for {
+		ds, err := iter.Next()
+		if ds != nil {
+			if _, err := h.client.Doc(ds.Ref.Path).Delete(ctx); err != nil {
+				logjson.Warn("could not delete rule %s", ds.Ref.Path)
+			}
+		}
+		if err != nil {
+			if err == iterator.Done {
+				break
+			}
+		}
+	}
 }
 
 func (h *handler) Sync(ctx context.Context) {
@@ -239,8 +252,9 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("content-type", mr.ContentType)
 	if mr.TextBody != "" {
 		_, _ = w.Write([]byte(mr.TextBody))
-	} else if mr.JsonBody != "" {
-		_, _ = w.Write([]byte(mr.JsonBody))
+	} else if mr.JsonBody != nil {
+		bs, _ := json.Marshal(mr.JsonBody)
+		_, _ = w.Write(bs)
 	} else if mr.BytesBody != nil {
 		_, _ = w.Write(mr.BytesBody)
 	}
@@ -343,7 +357,7 @@ func validateMockMapping(m *MockMapping) error {
 	if m.Response.TextBody != "" {
 		i += 1
 	}
-	if m.Response.JsonBody != "" {
+	if m.Response.JsonBody != nil {
 		i += 1
 	}
 	if m.Response.BytesBody != nil {

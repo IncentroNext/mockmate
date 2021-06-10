@@ -28,6 +28,8 @@ curl -X DELETE http://localhost:8080/mockmate-mappings
 A mapping consist of a rule and a response. If a request matches with a rule,
 its linked response is returned. If no rules match, a 404 Not Found is returned.
 
+You can set multiple fields in a rule. These are combined with logical AND. 
+
 You can add a priority to a rule. When multiple rules match, the rule with the
 highest priority wins. When there are ties, one of them will be selected at
 random.

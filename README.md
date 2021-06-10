@@ -50,11 +50,13 @@ to `/mockmate-mappings:record`. This will return the request and the actual
 response. The latter can be used to create a mapping.
 
 ```shell
-$ curl -d '{"scheme": "https://www.example.com"}' \
+$ curl -d '{"scheme": "https://www.example.com", "path": "/foo"}' \
     http://localhost:8080/mockmate-mappings:record
+
 {
 	"request": {
-		"method":"GET"
+		"method": "GET",
+		"path": "/foo"
 	}, 
 	"response": {
 		"content_type": "text/html; charset=UTF-8",

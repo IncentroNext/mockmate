@@ -26,7 +26,7 @@ curl -X DELETE http://localhost:8080/mockmate-mappings
 ## Mapping and Rule Syntax
 
 A mapping consist of a rule and a response. If a request matches with a rule,
-its linked response is returned.
+its linked response is returned. If no rules match, a 404 Not Found is returned.
 
 No guarantees provided with regard to the priority of rules. Any rule that
 matches could provide the response.

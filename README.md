@@ -8,6 +8,10 @@ Uses Firestore, when available, to persist mock mappings.
 
 ```shell
 go run server.go
+
+# or
+
+make run
 ```
 
 ## Setting a Rule
@@ -93,6 +97,21 @@ random.
   }
 }
 ```
+
+## Build Server
+
+[Untested]
+
+You can use Cloud Build to create an image.
+
+```shell
+make build-async
+```
+
+## Deploy Server
+
+[Untested]
+You can use Terraform to deploy the service.
 
 ## Limitations
 

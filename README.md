@@ -2,7 +2,9 @@
 
 A simple HTTP mocking server.
 
-Uses Firestore, when available, to persist mock mappings.
+It is controlled completely via API calls and can be deployed to Cloud Run.
+
+Uses Firestore to persist mock mappings.
 
 ## Start the Server
 

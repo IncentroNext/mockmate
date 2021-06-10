@@ -11,9 +11,11 @@ import (
 	"google.golang.org/api/iterator"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -21,14 +23,25 @@ type MockMapping struct {
 	UpdateTime time.Time    `json:"update_time"`
 	Rule       MockRule     `json:"rule"`
 	Response   MockResponse `json:"response"`
+	name       string
 }
 
 func (m MockMapping) Name() string {
+	if m.name != "" {
+		return m.name
+	}
 	s := fmt.Sprintf("%x", m.Rule.Hash())
 	if len(s) < 8 {
-		return s
+		m.name = s
+	} else {
+		m.name = s[:8]
 	}
-	return s[:8]
+	return m.name
+}
+
+type KV struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
 }
 
 type MockRule struct {
@@ -36,6 +49,21 @@ type MockRule struct {
 	Path          string   `json:"path"`
 	PathRegex     string   `json:"path_regex"`
 	TextBodyRegex string   `json:"text_body_regex"`
+	QueryParams   []KV     `json:"query_params"`
+	name          string
+}
+
+func (mr MockRule) Name() string {
+	if mr.name != "" {
+		return mr.name
+	}
+	s := fmt.Sprintf("%x", mr.Hash())
+	if len(s) < 8 {
+		mr.name = s
+	} else {
+		mr.name = s[:8]
+	}
+	return mr.name
 }
 
 func (mr MockRule) Hash() []byte {
@@ -46,7 +74,7 @@ func (mr MockRule) Hash() []byte {
 	return h.Sum(nil)
 }
 
-func (mr MockRule) matches(method string, path string, body []byte) bool {
+func (mr MockRule) matches(method string, u *url.URL, body []byte) bool {
 	methodOk := len(mr.Methods) == 0
 	if !methodOk {
 		for _, m := range mr.Methods {
@@ -60,9 +88,24 @@ func (mr MockRule) matches(method string, path string, body []byte) bool {
 	pathOk := false
 	if mr.PathRegex != "" {
 		re, _ := regexp.Compile(mr.PathRegex)
-		pathOk = re.MatchString(path)
+		pathOk = re.MatchString(u.Path)
 	} else {
-		pathOk = mr.Path == path
+		pathOk = mr.Path == u.Path
+	}
+
+	paramsOk := len(mr.QueryParams) == 0
+	if !paramsOk {
+		for _, kv := range mr.QueryParams {
+			valuesMap := u.Query()
+			found := false
+			for _, v := range valuesMap[kv.Key] {
+				if v == kv.Value {
+					found = true
+					break
+				}
+			}
+			paramsOk = paramsOk && found
+		}
 	}
 
 	bodyOk := false
@@ -73,7 +116,8 @@ func (mr MockRule) matches(method string, path string, body []byte) bool {
 		bodyOk = true
 	}
 
-	return methodOk && pathOk && bodyOk
+	logjson.Debug("method: %v, path: %v, params: %v, body: %v", methodOk, pathOk, paramsOk, bodyOk)
+	return methodOk && pathOk && paramsOk && bodyOk
 }
 
 type MockResponse struct {
@@ -87,6 +131,7 @@ type MockResponse struct {
 const collection = "services/mockmate/mapping"
 
 type handler struct {
+	mux      sync.Mutex
 	client   *firestore.Client
 	mappings []MockMapping
 }
@@ -114,10 +159,24 @@ func newHandler(ctx context.Context) (*handler, error) {
 	return h, nil
 }
 
+func (h *handler) reset(ctx context.Context) {
+	h.mux.Lock()
+	defer h.mux.Unlock()
+
+	h.mappings = nil
+
+	if h.client == nil {
+		return
+	}
+
+}
+
 func (h *handler) Sync(ctx context.Context) {
 	if h.client == nil {
 		return
 	}
+	h.mux.Lock()
+	defer h.mux.Unlock()
 
 	fsMappings := make(map[string]MockMapping)
 	iter := h.client.Collection(collection).Documents(ctx)
@@ -200,18 +259,25 @@ func (h *handler) handleMockMateSettings(ctx context.Context, w http.ResponseWri
 			return
 		}
 	}
+	if r.Method == http.MethodDelete && r.URL.Path == "/mockmate-mappings" {
+		h.reset(ctx)
+		return
+	}
 	http.NotFound(w, r)
 }
 
 func (h *handler) getMockResponse(ctx context.Context, r *http.Request) (MockResponse, bool) {
 	h.Sync(ctx)
+	h.mux.Lock()
+	defer h.mux.Unlock()
+
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		logjson.Warn("could not read body")
 		return MockResponse{}, false
 	}
 	for _, m := range h.mappings {
-		if m.Rule.matches(r.Method, r.URL.Path, body) {
+		if m.Rule.matches(r.Method, r.URL, body) {
 			return m.Response, true
 		}
 	}
@@ -238,6 +304,8 @@ func (h *handler) setMockMapping(ctx context.Context, r *http.Request) (*MockMap
 	}
 
 	name := m.Name()
+
+	h.mux.Lock()
 	var newMappings []MockMapping
 	for _, existing := range h.mappings {
 		if existing.Name() != name {
@@ -246,10 +314,20 @@ func (h *handler) setMockMapping(ctx context.Context, r *http.Request) (*MockMap
 	}
 	newMappings = append(newMappings, *m)
 	h.mappings = newMappings
+	h.mux.Unlock()
+
 	logjson.Info("cached mapping %s", name)
 	h.Sync(ctx)
 
 	return m, nil
+}
+
+func (h *handler) Reset() {
+	h.mux.Lock()
+
+	h.mappings = nil
+	defer h.mux.Unlock()
+
 }
 
 func validateMockMapping(m *MockMapping) error {

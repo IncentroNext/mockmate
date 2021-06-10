@@ -45,6 +45,7 @@ type KV struct {
 }
 
 type MockRule struct {
+	Priority      int      `json:"priority"`
 	Methods       []string `json:"methods"`
 	Path          string   `json:"path"`
 	PathRegex     string   `json:"path_regex"`
@@ -290,12 +291,23 @@ func (h *handler) getMockResponse(ctx context.Context, r *http.Request) (MockRes
 		logjson.Warn("could not read body")
 		return MockResponse{}, false
 	}
+	var candidates []MockMapping
 	for _, m := range h.mappings {
 		if m.Rule.matches(r.Method, r.URL, body) {
-			return m.Response, true
+			candidates = append(candidates, m)
 		}
 	}
-	return MockResponse{}, false
+	if len(candidates) == 0 {
+		return MockResponse{}, false
+	}
+	max := candidates[0]
+	for i := 1; i < len(candidates); i += 1 {
+		if max.Rule.Priority < candidates[i].Rule.Priority {
+			max = candidates[i]
+		}
+	}
+	logjson.Debug("rule %s wins with priority %v", max.name, max.Rule.Priority)
+	return max.Response, true
 }
 
 func (h *handler) setMockMapping(ctx context.Context, r *http.Request) (*MockMapping, error) {

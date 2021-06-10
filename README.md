@@ -11,13 +11,13 @@ To set a rule, POST a properly structured rule json to `/mockmate-mappings`.
 ```shell
 # sets a rule that applies to path '/re' and checks if the string 'foo' occurs in the body.
 
-curl -d '{"rule":{"path":"/re", "text_body_regex":".*foo.*"},"response":{"text_body":"REGEX OK\n"}}' \
+curl -d '{"rule": {"path":"/re", "text_body_regex": ".*foo.*"},"response": {"text_body": "REGEX OK\n"}}' \
     http://localhost:8080/mockmate-mappings
 ```
 
 ## Clear All Rules
 
-To clear all rules, send a DELETE to `http://localhost:8080/mockmate-mappings`
+To clear all rules, send a DELETE to `http://localhost:8080/mockmate-mappings`.
 
 ```shell
 curl -X DELETE http://localhost:8080/mockmate-mappings
@@ -28,13 +28,15 @@ curl -X DELETE http://localhost:8080/mockmate-mappings
 A mapping consist of a rule and a response. If a request matches with a rule,
 its linked response is returned. If no rules match, a 404 Not Found is returned.
 
-No guarantees provided with regard to the priority of rules. Any rule that
-matches could provide the response.
+You can add a priority to a rule. When multiple rules match, the rule with the
+highest priority wins. When there are ties, one of them will be selected at
+random.
 
 ```json
 {
   "update_time": "set by server",
   "rule": {
+    "priority": "integer value, higher value = higher priority (not a string)",
     "methods": [
       "subset of",
       "GET",

@@ -41,6 +41,48 @@ $ curl -d 'i am a bar' http://localhost:8080/re
 404 page not found
 ```
 
+## Record a Call
+
+You can record a call to another service with a POST
+to `/mockmate-mappings:record`. This will return the request and the response.
+The latter can be used to create a mapping.
+
+```shell
+$ curl -d '{"host": "https://www.example.com"}' http://localhost:8080/mockmate-mappings:record
+{"request":{"method":"GET"}, "response":{"content_type":"text/html; charset=UTF-8","text_body":"lots of html","status_code":200,"headers":{"Age":["421638"],"Cache-Control":["max-age=604800"],"Content-Type":["text/html; charset=UTF-8"],"Date":["Thu, 10 Jun 2021 21:34:32 GMT"],"Etag":["\"3147526947+gzip\""],"Expires":["Thu, 17 Jun 2021 21:34:32 GMT"],"Last-Modified":["Thu, 17 Oct 2019 07:18:26 GMT"],"Server":["ECS (nyb/1D18)"],"Vary":["Accept-Encoding"],"X-Cache":["HIT"]}}}
+```
+
+The complete record request syntax:
+
+```json
+{
+  "scheme": "the protocol, host name and port",
+  "method": "the method",
+  "path": "the path",
+  "query_params": {
+    "key": [
+      "value1",
+      "value2"
+    ],
+    "key2": [
+      "value3"
+    ]
+  },
+  "text_body": "string body",
+  "headers": {
+    "key": [
+      "value1",
+      "value2"
+    ],
+    "key2": [
+      "value3"
+    ]
+  }
+}
+```
+
+}
+
 ## Clear All Rules
 
 To clear all rules, send a DELETE to `http://localhost:8080/mockmate-mappings`.
@@ -93,7 +135,17 @@ random.
       "some": "json object"
     },
     "bytes_body": "response byte array",
-    "status_code": "integer status code (not a string)"
+    "status_code": "integer status code (not a string)",
+    "headers": {
+      "key": [
+        "value1",
+        "value2"
+      ],
+      "key2": [
+        "value3",
+        "value4"
+      ]
+    }
   }
 }
 ```
@@ -113,9 +165,13 @@ make build-async
 [Untested]
 You can use Terraform to deploy the service.
 
-## Limitations
+## Limitations & Known Issues
 
-There are no checks on conflicts between rules.
+* There are no checks on conflicts between rules.
+* By design, there are also no checks if something makes sense in HTTP terms.
+  You might need to mock a really weird service.
 
-By design, there are also no checks if something makes sense in HTTP terms. You
-might need to mock a really weird service. 
+### ToDo's
+
+* If a recorded call returns JSON, it is returned as (escaped) text
+* Always assumes outgoing strings are UTF-8

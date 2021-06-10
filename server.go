@@ -8,12 +8,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/HayoVanLoon/go-commons/logjson"
+	"golang.org/x/text/encoding"
+	"golang.org/x/text/encoding/ianaindex"
+	"golang.org/x/text/encoding/unicode"
 	"google.golang.org/api/iterator"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -39,18 +44,13 @@ func (m MockMapping) Name() string {
 	return m.name
 }
 
-type KV struct {
-	Key   string `json:"key"`
-	Value string `json:"value"`
-}
-
 type MockRule struct {
-	Priority      int      `json:"priority"`
-	Methods       []string `json:"methods"`
-	Path          string   `json:"path"`
-	PathRegex     string   `json:"path_regex"`
-	TextBodyRegex string   `json:"text_body_regex"`
-	QueryParams   []KV     `json:"query_params"`
+	Priority      int                 `json:"priority"`
+	Methods       []string            `json:"methods"`
+	Path          string              `json:"path"`
+	PathRegex     string              `json:"path_regex"`
+	TextBodyRegex string              `json:"text_body_regex"`
+	QueryParams   map[string][]string `json:"query_params"`
 	name          string
 }
 
@@ -96,16 +96,16 @@ func (mr MockRule) matches(method string, u *url.URL, body []byte) bool {
 
 	paramsOk := len(mr.QueryParams) == 0
 	if !paramsOk {
-		for _, kv := range mr.QueryParams {
-			valuesMap := u.Query()
-			found := false
-			for _, v := range valuesMap[kv.Key] {
-				if v == kv.Value {
-					found = true
-					break
+		for k, vs := range mr.QueryParams {
+			values := u.Query()[k]
+			if len(vs) == len(values) {
+				sort.Strings(vs)
+				sort.Strings(values)
+				paramsOk = true
+				for i := 0; paramsOk && i < len(vs); i += 1 {
+					paramsOk = vs[i] == values[i]
 				}
 			}
-			paramsOk = paramsOk && found
 		}
 	}
 
@@ -122,11 +122,26 @@ func (mr MockRule) matches(method string, u *url.URL, body []byte) bool {
 }
 
 type MockResponse struct {
-	ContentType string                 `json:"content_type"`
-	TextBody    string                 `json:"text_body"`
-	JsonBody    map[string]interface{} `json:"json_body"`
-	BytesBody   []byte                 `json:"bytes_body"`
+	ContentType string                 `json:"content_type,omitempty"`
+	TextBody    string                 `json:"text_body,omitempty"`
+	JsonBody    map[string]interface{} `json:"json_body,omitempty"`
+	BytesBody   []byte                 `json:"bytes_body,omitempty"`
 	StatusCode  int                    `json:"status_code"`
+	Headers     map[string][]string    `json:"headers,omitempty"`
+}
+
+type SimpleRequest struct {
+	Scheme      string              `json:"scheme,omitempty"`
+	Method      string              `json:"method"`
+	Path        string              `json:"path,omitempty"`
+	QueryParams map[string][]string `json:"query_params,omitempty"`
+	TextBody    string              `json:"text_body,omitempty"`
+	Headers     map[string][]string `json:"headers,omitempty"`
+}
+
+type Recording struct {
+	Request  *SimpleRequest `json:"request"`
+	Response *MockResponse  `json:"response"`
 }
 
 const collection = "services/mockmate/mapping"
@@ -274,6 +289,10 @@ func (h *handler) handleMockMateSettings(ctx context.Context, w http.ResponseWri
 			return
 		}
 	}
+	if r.Method == http.MethodPost && r.URL.Path == "/mockmate-mappings:record" {
+		record(w, r)
+		return
+	}
 	if r.Method == http.MethodDelete && r.URL.Path == "/mockmate-mappings" {
 		h.reset(ctx)
 		return
@@ -346,12 +365,131 @@ func (h *handler) setMockMapping(ctx context.Context, r *http.Request) (*MockMap
 	return m, nil
 }
 
-func (h *handler) Reset() {
-	h.mux.Lock()
+func record(w http.ResponseWriter, r *http.Request) {
+	bs, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("could not read body: %s", err), http.StatusBadRequest)
+		return
+	}
+	req := &SimpleRequest{}
+	if err := json.Unmarshal(bs, req); err != nil {
+		http.Error(w, fmt.Sprintf("could not parse body: %s", err), http.StatusBadRequest)
+		return
+	}
 
-	h.mappings = nil
-	defer h.mux.Unlock()
+	method := req.Method
+	if method == "" {
+		method = http.MethodGet
+	}
+	u, err := url.Parse(req.Scheme + req.Path)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("could not parse url: %s%s", req.Scheme, req.Path), http.StatusBadRequest)
+		return
+	}
+	for k, vs := range req.QueryParams {
+		for _, v := range vs {
+			u.Query().Add(k, v)
+		}
+	}
+	var body io.Reader
+	if len(req.TextBody) > 0 {
+		body = strings.NewReader(req.TextBody)
+	}
 
+	out, err := http.NewRequest(method, u.String(), body)
+	if err != nil {
+		http.Error(w, "invalid request data", http.StatusBadRequest)
+		return
+	}
+
+	resp, err := http.DefaultClient.Do(out)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("error calling service: %s", err), http.StatusServiceUnavailable)
+		return
+	}
+	bs, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("could not read response: %s", err), http.StatusInternalServerError)
+		return
+	}
+	ct := resp.Header.Get("content-type")
+	text, bs := guessBody(ct, bs)
+	rec := Recording{
+		Request: &SimpleRequest{
+			Method:      method,
+			Path:        u.Path,
+			QueryParams: req.QueryParams,
+			TextBody:    req.TextBody,
+			Headers:     req.Headers,
+		},
+		Response: &MockResponse{
+			ContentType: ct,
+			StatusCode:  resp.StatusCode,
+			TextBody:    text,
+			BytesBody:   bs,
+			Headers:     make(map[string][]string),
+		},
+	}
+	for k, vs := range resp.Header {
+		rec.Response.Headers[k] = vs
+	}
+
+	bs, _ = json.Marshal(rec)
+	w.Header().Set("content-type", "application/json")
+	_, _ = w.Write(bs)
+}
+
+func guessBody(ct string, body []byte) (string, []byte) {
+	xs := strings.Split(ct, ";")
+	t := strings.Trim(xs[0], " ")
+	var enc encoding.Encoding
+	if len(xs) > 1 {
+		for _, x := range xs {
+			clean := strings.ToLower(strings.Trim(x, " "))
+			if strings.HasPrefix(clean, "charset=") {
+				name := strings.Split(clean, "charset=")
+				if len(name) < 2 {
+					continue
+				}
+				var err error
+				enc, err = ianaindex.IANA.Encoding(strings.Trim(name[1], " "))
+				if err != nil {
+					logjson.Warn("%s: %s", err, name[1])
+				} else {
+					logjson.Info("found encoding %s", name[1])
+				}
+			}
+		}
+	}
+	if enc == nil {
+		enc = unicode.UTF8
+	}
+	switch t {
+	case "application/octet-stream":
+		return "", body
+	case "text/xml":
+		return decode(enc, body), nil
+	case "application/xml":
+		return decode(enc, body), nil
+	case "text/plain":
+		return decode(enc, body), nil
+	case "text/html":
+		return decode(enc, body), nil
+	case "application/json":
+		return decode(enc, body), nil
+	}
+	logjson.Debug("received content type %s, defaulting to string", ct)
+	return string(body), nil
+}
+
+func decode(enc encoding.Encoding, in []byte) string {
+	dec := enc.NewDecoder()
+	bs, err := dec.Bytes(in)
+	if err != nil {
+		logjson.Warn("could not decode body")
+		return ""
+	}
+	return string(bs)
 }
 
 func validateMockMapping(m *MockMapping) error {

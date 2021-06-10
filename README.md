@@ -20,11 +20,11 @@ To set a rule, POST a properly structured rule json to `/mockmate-mappings`.
 
 ```shell
 # set a simple rule for '/'
-curl -d '{"rule": {"path":"/"},"response": {"text_body": "Hello World\n"}}' \
+curl -d '{"rule": {"path":"/"}, "response": {"text_body": "Hello World\n"}}' \
     http://localhost:8080/mockmate-mappings
 
 # sets a rule that applies to path '/re' and checks if the string 'foo' occurs in the body.
-curl -d '{"rule": {"path":"/re", "text_body_regex": ".*foo.*"},"response": {"text_body": "REGEX OK\n"}}' \
+curl -d '{"rule": {"path":"/re", "text_body_regex": ".*foo.*"}, "response": {"text_body": "REGEX OK\n"}}' \
     http://localhost:8080/mockmate-mappings
 ```
 

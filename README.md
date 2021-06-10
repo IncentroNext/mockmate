@@ -4,15 +4,37 @@ A simple HTTP mocking server.
 
 Uses Firestore, when available, to persist mock mappings.
 
+## Start the Server
+
+```shell
+go run server.go
+```
+
 ## Setting a Rule
 
 To set a rule, POST a properly structured rule json to `/mockmate-mappings`.
 
 ```shell
-# sets a rule that applies to path '/re' and checks if the string 'foo' occurs in the body.
+# set a simple rule for '/'
+curl -d '{"rule": {"path":"/"},"response": {"text_body": "Hello World\n"}}' \
+    http://localhost:8080/mockmate-mappings
 
+# sets a rule that applies to path '/re' and checks if the string 'foo' occurs in the body.
 curl -d '{"rule": {"path":"/re", "text_body_regex": ".*foo.*"},"response": {"text_body": "REGEX OK\n"}}' \
     http://localhost:8080/mockmate-mappings
+```
+
+## Try the Rules Above
+
+```shell
+$ curl http://localhost:8080/
+Hello World
+
+$ curl -d 'i am a foo' http://localhost:8080/re
+REGEX OK
+
+$ curl -d 'i am a bar' http://localhost:8080/re
+404 page not found
 ```
 
 ## Clear All Rules
@@ -28,7 +50,7 @@ curl -X DELETE http://localhost:8080/mockmate-mappings
 A mapping consist of a rule and a response. If a request matches with a rule,
 its linked response is returned. If no rules match, a 404 Not Found is returned.
 
-You can set multiple fields in a rule. These are combined with logical AND. 
+You can set multiple fields in a rule. These are combined with logical AND.
 
 You can add a priority to a rule. When multiple rules match, the rule with the
 highest priority wins. When there are ties, one of them will be selected at

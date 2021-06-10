@@ -306,7 +306,7 @@ func (h *handler) getMockResponse(ctx context.Context, r *http.Request) (MockRes
 			max = candidates[i]
 		}
 	}
-	logjson.Debug("rule %s wins with priority %v", max.name, max.Rule.Priority)
+	logjson.Debug("rule %s wins with priority %v", max.Name(), max.Rule.Priority)
 	return max.Response, true
 }
 
@@ -329,12 +329,10 @@ func (h *handler) setMockMapping(ctx context.Context, r *http.Request) (*MockMap
 		m.Response.StatusCode = http.StatusOK
 	}
 
-	name := m.Name()
-
 	h.mux.Lock()
 	var newMappings []MockMapping
 	for _, existing := range h.mappings {
-		if existing.Name() != name {
+		if existing.Name() != m.Name() {
 			newMappings = append(newMappings, existing)
 		}
 	}
@@ -342,7 +340,7 @@ func (h *handler) setMockMapping(ctx context.Context, r *http.Request) (*MockMap
 	h.mappings = newMappings
 	h.mux.Unlock()
 
-	logjson.Info("cached mapping %s", name)
+	logjson.Info("cached mapping %s", m.Name())
 	h.Sync(ctx)
 
 	return m, nil
@@ -390,6 +388,7 @@ func main() {
 	ctx := context.Background()
 	h, _ := newHandler(ctx)
 
+	logjson.Notice("listening on port %s", port)
 	if err := http.ListenAndServe(":"+port, h); err != nil {
 		logjson.Critical(err)
 	}

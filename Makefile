@@ -18,25 +18,16 @@ run:
 	go run server.go
 
 build-local: test
-	export GOPRIVATE='github.com/IncentroNext/*'; \
-	go mod vendor && \
 	pack build $(IMAGE_NAME) \
 		--builder gcr.io/buildpacks/builder:v1
-	rm -rf vendor
 
 build: check-project test
-	export GOPRIVATE='github.com/IncentroNext/*'; \
-	go mod vendor && \
 	gcloud builds submit \
 		--project=$(PROJECT) \
 		--pack image=gcr.io/$(PROJECT)/$(IMAGE_NAME)
-	rm -rf vendor
 
 build-async: check-project test
-	export GOPRIVATE='github.com/IncentroNext/*'; \
-	go mod vendor && \
 	gcloud builds submit \
 		--project=$(PROJECT) \
 		--async \
 		--pack image=gcr.io/$(PROJECT)/$(IMAGE_NAME)
-	rm -rf vendor

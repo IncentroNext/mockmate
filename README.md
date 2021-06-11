@@ -195,4 +195,4 @@ You can use Terraform to deploy the service.
 ### ToDo's
 
 * If a recorded call returns JSON, it is returned as (escaped) text
-* Always assumes outgoing strings are UTF-8
+* Always assumes outgoing recorded call body are strings in UTF-8

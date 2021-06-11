@@ -196,6 +196,7 @@ func (h *handler) reset(ctx context.Context) {
 			if err == iterator.Done {
 				break
 			}
+			logjson.Warn("error while deleting mappings: %s", err)
 		}
 	}
 }
@@ -223,6 +224,7 @@ func (h *handler) Sync(ctx context.Context) {
 			if err == iterator.Done {
 				break
 			}
+			logjson.Warn("error while persisting mappings: %s", err)
 		}
 	}
 	var newLocals []MockMapping
@@ -401,6 +403,11 @@ func record(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid request data", http.StatusBadRequest)
 		return
 	}
+	for k, vs := range req.Headers {
+		for _, v := range vs {
+			out.Header.Add(k, v)
+		}
+	}
 
 	resp, err := http.DefaultClient.Do(out)
 	if err != nil {
@@ -439,31 +446,10 @@ func record(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(bs)
 }
 
-func guessBody(ct string, body []byte) (string, []byte) {
-	xs := strings.Split(ct, ";")
+func guessBody(contentType string, body []byte) (string, []byte) {
+	xs := strings.Split(contentType, ";")
+	enc := getEncoding(xs)
 	t := strings.Trim(xs[0], " ")
-	var enc encoding.Encoding
-	if len(xs) > 1 {
-		for _, x := range xs {
-			clean := strings.ToLower(strings.Trim(x, " "))
-			if strings.HasPrefix(clean, "charset=") {
-				name := strings.Split(clean, "charset=")
-				if len(name) < 2 {
-					continue
-				}
-				var err error
-				enc, err = ianaindex.IANA.Encoding(strings.Trim(name[1], " "))
-				if err != nil {
-					logjson.Warn("%s: %s", err, name[1])
-				} else {
-					logjson.Info("found encoding %s", name[1])
-				}
-			}
-		}
-	}
-	if enc == nil {
-		enc = unicode.UTF8
-	}
 	switch t {
 	case "application/octet-stream":
 		return "", body
@@ -478,8 +464,31 @@ func guessBody(ct string, body []byte) (string, []byte) {
 	case "application/json":
 		return decode(enc, body), nil
 	}
-	logjson.Debug("received content type %s, defaulting to string", ct)
+	logjson.Debug("received content type %s, defaulting to string", contentType)
 	return string(body), nil
+}
+
+func getEncoding(xs []string) encoding.Encoding {
+	if len(xs) > 1 {
+		for _, x := range xs {
+			clean := strings.ToLower(strings.Trim(x, " "))
+			if strings.HasPrefix(clean, "charset=") {
+				name := strings.Split(clean, "charset=")
+				if len(name) < 2 {
+					continue
+				}
+				enc, err := ianaindex.IANA.Encoding(strings.Trim(name[1], " "))
+				if err != nil {
+					logjson.Warn("%s: %s", err, name[1])
+				} else {
+					logjson.Info("found encoding %s", name[1])
+					return enc
+				}
+			}
+		}
+	}
+	logjson.Warn("could not determine encoding, defaulting to UTF-8")
+	return unicode.UTF8
 }
 
 func decode(enc encoding.Encoding, in []byte) string {

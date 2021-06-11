@@ -6,6 +6,9 @@ It is controlled completely via API calls and can be deployed to Cloud Run.
 
 Uses Firestore to persist mock mappings.
 
+There is no authorisation of any kind. Never run this service publicly
+available (like with `allUsers`, `allAuthenticatedUsers`).
+
 ## Start the Server
 
 ```shell

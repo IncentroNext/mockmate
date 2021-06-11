@@ -33,6 +33,9 @@ curl -d '{"rule": {"path":"/re", "text_body_regex": ".*foo.*"}, "response": {"te
     http://localhost:8080/mockmate-mappings
 ```
 
+Given the complexity of things like this, you will likely want to script this
+rule setting. 
+
 ## Try the Rules Above
 
 ```shell

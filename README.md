@@ -110,6 +110,14 @@ The complete record request syntax:
 
 }
 
+## See All Rules
+
+To see all rules, send a GET to `http://localhost:8080/mockmate-mappings`.
+
+```shell
+curl http://localhost:8080/mockmate-mappings
+```
+
 ## Clear All Rules
 
 To clear all rules, send a DELETE to `http://localhost:8080/mockmate-mappings`.

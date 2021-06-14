@@ -295,6 +295,10 @@ func (h *handler) handleMockMateSettings(ctx context.Context, w http.ResponseWri
 		record(w, r)
 		return
 	}
+	if r.Method == http.MethodGet && r.URL.Path == "/mockmate-mappings" {
+		h.listMappings(ctx, w, r)
+		return
+	}
 	if r.Method == http.MethodDelete && r.URL.Path == "/mockmate-mappings" {
 		h.reset(ctx)
 		return
@@ -365,6 +369,20 @@ func (h *handler) setMockMapping(ctx context.Context, r *http.Request) (*MockMap
 	h.Sync(ctx)
 
 	return m, nil
+}
+
+func (h *handler) listMappings(ctx context.Context, w http.ResponseWriter, _ *http.Request) {
+	h.Sync(ctx)
+	h.mux.Lock()
+	defer h.mux.Unlock()
+	resp := struct {
+		Mappings []MockMapping
+	}{
+		Mappings: h.mappings,
+	}
+	bs, _ := json.Marshal(resp)
+	w.Header().Set("content-type", "application/json")
+	_, _ = w.Write(bs)
 }
 
 func record(w http.ResponseWriter, r *http.Request) {

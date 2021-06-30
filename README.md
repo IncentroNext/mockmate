@@ -34,7 +34,7 @@ curl -d '{"rule": {"path":"/re", "text_body_regex": ".*foo.*"}, "response": {"te
 ```
 
 Given the complexity of things like this, you will likely want to script this
-rule setting. 
+rule setting.
 
 ## Try the Rules Above
 
@@ -202,6 +202,9 @@ You can use Terraform to deploy the service.
 
 ## Limitations & Known Issues
 
+* You cannot update existing rules; too much hassle for too little gain. So
+  automate (script, ...) your rule uploading and just rebuild everything on
+  error.
 * There are no checks on conflicts between rules.
 * By design, there are also no checks if something makes sense in HTTP terms.
   You might need to mock a really weird service.
@@ -210,3 +213,4 @@ You can use Terraform to deploy the service.
 
 * If a recorded call returns JSON, it is returned as (escaped) text
 * Always assumes outgoing recorded call body are strings in UTF-8
+* Add support for headers in mapping rules

@@ -1,9 +1,6 @@
 variable "project" {
 }
 
-variable "proj_hash" {
-}
-
 variable "region" {
 }
 
@@ -17,11 +14,6 @@ variable "service_version" {
 
 variable "image" {
   description = "container image"
-}
-
-variable "envs" {
-  type = map(string)
-  description = "service environment variables"
 }
 
 variable release {

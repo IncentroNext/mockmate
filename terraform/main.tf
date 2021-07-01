@@ -22,13 +22,6 @@ resource "google_cloud_run_service" "main" {
     spec {
       containers {
         image = "gcr.io/${var.project}/${var.image}"
-        dynamic "env" {
-          for_each = var.envs
-          content {
-            name = env.key
-            value = env.value
-          }
-        }
       }
       service_account_name = google_service_account.main.email
     }

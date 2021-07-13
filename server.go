@@ -50,6 +50,7 @@ type MockRule struct {
 	Path          string              `json:"path"`
 	PathRegex     string              `json:"path_regex"`
 	TextBodyRegex string              `json:"text_body_regex"`
+	Headers       map[string][]string `json:"headers"`
 	QueryParams   map[string][]string `json:"query_params"`
 	name          string
 }
@@ -75,11 +76,11 @@ func (mr MockRule) Hash() []byte {
 	return h.Sum(nil)
 }
 
-func (mr MockRule) matches(method string, u *url.URL, body []byte) bool {
+func (mr MockRule) matches(r *http.Request, body []byte) bool {
 	methodOk := len(mr.Methods) == 0
 	if !methodOk {
 		for _, m := range mr.Methods {
-			if method == m {
+			if r.Method == m {
 				methodOk = true
 				break
 			}
@@ -89,15 +90,30 @@ func (mr MockRule) matches(method string, u *url.URL, body []byte) bool {
 	pathOk := false
 	if mr.PathRegex != "" {
 		re, _ := regexp.Compile(mr.PathRegex)
-		pathOk = re.MatchString(u.Path)
+		pathOk = re.MatchString(r.URL.Path)
 	} else {
-		pathOk = mr.Path == u.Path
+		pathOk = mr.Path == r.URL.Path
+	}
+
+	headersOk := len(mr.QueryParams) == 0
+	if !headersOk {
+		for k, vs := range mr.Headers {
+			values := r.Header[k]
+			if len(vs) == len(values) {
+				sort.Strings(vs)
+				sort.Strings(values)
+				headersOk = true
+				for i := 0; headersOk && i < len(vs); i += 1 {
+					headersOk = vs[i] == values[i]
+				}
+			}
+		}
 	}
 
 	paramsOk := len(mr.QueryParams) == 0
 	if !paramsOk {
 		for k, vs := range mr.QueryParams {
-			values := u.Query()[k]
+			values := r.URL.Query()[k]
 			if len(vs) == len(values) {
 				sort.Strings(vs)
 				sort.Strings(values)
@@ -318,7 +334,7 @@ func (h *handler) getMockResponse(ctx context.Context, r *http.Request) (MockRes
 	}
 	var candidates []MockMapping
 	for _, m := range h.mappings {
-		if m.Rule.matches(r.Method, r.URL, body) {
+		if m.Rule.matches(r, body) {
 			candidates = append(candidates, m)
 		}
 	}
@@ -376,9 +392,12 @@ func (h *handler) listMappings(ctx context.Context, w http.ResponseWriter, _ *ht
 	h.mux.Lock()
 	defer h.mux.Unlock()
 	resp := struct {
-		Mappings []MockMapping
-	}{
-		Mappings: h.mappings,
+		Mappings []MockMapping `json:"mappings"`
+	}{}
+	if len(h.mappings) == 0 {
+		resp.Mappings = []MockMapping{}
+	} else {
+		resp.Mappings = h.mappings
 	}
 	bs, _ := json.Marshal(resp)
 	w.Header().Set("content-type", "application/json")

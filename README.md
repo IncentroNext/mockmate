@@ -152,16 +152,24 @@ random.
     "path": "url path, mutually exclusive with path_regex",
     "path_regex": "url path regex, mutually exclusive with path",
     "text_body_regex": "text body regex",
-    "query_params": [
-      {
-        "key": "multimap of",
-        "value": "query parameters and values"
-      },
-      {
-        "key": "multimap of",
-        "value": "query parameters and values"
-      }
-    ]
+    "headers": {
+      "key": [
+        "value1",
+        "value2"
+      ],
+      "key2": [
+        "value3"
+      ]
+    },
+    "query_params": {
+      "key": [
+        "value1",
+        "value2"
+      ],
+      "key2": [
+        "value3"
+      ]
+    }
   },
   "response": {
     "content_type": "response content type header",

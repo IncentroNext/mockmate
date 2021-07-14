@@ -31,7 +31,7 @@ type MockMapping struct {
 	name       string
 }
 
-func (m MockMapping) Name() string {
+func (m *MockMapping) Name() string {
 	if m.name != "" {
 		return m.name
 	}
@@ -176,6 +176,9 @@ func newHandler(ctx context.Context) (*handler, error) {
 	if project == "" {
 		project = os.Getenv("PROJECT")
 	}
+	if project == "" {
+		project = os.Getenv("GOOGLE_PROJECT")
+	}
 	h := &handler{}
 
 	if project == "" {
@@ -224,6 +227,29 @@ func (h *handler) Sync(ctx context.Context) {
 	h.mux.Lock()
 	defer h.mux.Unlock()
 
+	fsMappings := h.fetchMappings(ctx)
+
+	var newLocals []MockMapping
+	var toStore []MockMapping
+	for _, m := range h.mappings {
+		fs, found := fsMappings[m.Name()]
+		if found {
+			if fs.UpdateTime.After(m.UpdateTime) {
+				newLocals = append(newLocals, fs)
+			} else {
+				newLocals = append(newLocals, m)
+				toStore = append(toStore, m)
+			}
+		} else {
+			toStore = append(toStore, m)
+			newLocals = append(newLocals, m)
+		}
+	}
+	h.mappings = newLocals
+	h.saveMappings(ctx, toStore)
+}
+
+func (h *handler) fetchMappings(ctx context.Context) map[string]MockMapping {
 	fsMappings := make(map[string]MockMapping)
 	iter := h.client.Collection(collection).Documents(ctx)
 	for {
@@ -243,29 +269,16 @@ func (h *handler) Sync(ctx context.Context) {
 			logjson.Warn("error while persisting mappings: %s", err)
 		}
 	}
-	var newLocals []MockMapping
-	var toStore []MockMapping
-	for _, m := range h.mappings {
-		fs, found := fsMappings[m.Name()]
-		if found {
-			if fs.UpdateTime.After(m.UpdateTime) {
-				newLocals = append(newLocals, fs)
-			} else {
-				newLocals = append(newLocals, m)
-				toStore = append(toStore, m)
-			}
-		} else {
-			toStore = append(toStore, m)
-			newLocals = append(newLocals, m)
-		}
-	}
-	h.mappings = newLocals
+	return fsMappings
+}
+
+func (h *handler) saveMappings(ctx context.Context, toStore []MockMapping) {
 	for _, m := range toStore {
 		docName := collection + "/" + m.Name()
 		if _, err := h.client.Doc(docName).Set(ctx, m); err != nil {
 			logjson.Warn("could not save mapping: %s", err)
 		} else {
-			logjson.Info("stored new mapping %s", docName)
+			logjson.Info("stored mapping %s", docName)
 		}
 	}
 }

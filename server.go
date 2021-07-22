@@ -70,10 +70,39 @@ func (mr MockRule) Name() string {
 
 func (mr MockRule) Hash() []byte {
 	h := sha1.New()
+
+	sort.Strings(mr.Methods)
+	h.Write([]byte(strings.Join(mr.Methods, "|")))
+
+	h.Write([]byte("~~~"))
 	h.Write([]byte(mr.Path))
+
 	h.Write([]byte("~~~"))
 	h.Write([]byte(mr.PathRegex))
+
+	h.Write([]byte("~~~"))
+	h.Write([]byte(mr.TextBodyRegex))
+
+	h.Write([]byte("~~~"))
+	h.Write([]byte(mr.PathRegex))
+
+	h.Write([]byte("~~~"))
+	h.Write(sliceMapToStable(mr.Headers))
+
+	h.Write([]byte("~~~"))
+	h.Write(sliceMapToStable(mr.QueryParams))
+
 	return h.Sum(nil)
+}
+
+func sliceMapToStable(m map[string][]string) []byte {
+	var xs []string
+	for k, vs := range m {
+		sort.Strings(vs)
+		xs = append(xs, k+strings.Join(vs, "//"))
+	}
+	sort.Slice(xs, func(i, j int) bool { return xs[i][0] < xs[j][0] })
+	return []byte(strings.Join(xs, "||"))
 }
 
 func (mr MockRule) matches(r *http.Request, body []byte) bool {

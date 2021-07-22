@@ -154,16 +154,14 @@ func (mr MockRule) matches(r *http.Request, body []byte) bool {
 		}
 	}
 
-	bodyOk := false
-	if mr.TextBodyRegex != "" {
+	bodyOk := mr.TextBodyRegex == ""
+	if !bodyOk {
 		re, _ := regexp.Compile(mr.TextBodyRegex)
 		bodyOk = re.Match(body)
-	} else {
-		bodyOk = true
 	}
 
-	logjson.Debug("method: %v, path: %v, params: %v, body: %v", methodOk, pathOk, paramsOk, bodyOk)
-	return methodOk && pathOk && paramsOk && bodyOk
+	logjson.Debug("method: %v, path: %v, params: %v, headers: %v, body: %v", methodOk, pathOk, headersOk, paramsOk, bodyOk)
+	return methodOk && pathOk && headersOk && paramsOk && bodyOk
 }
 
 type MockResponse struct {
@@ -260,22 +258,38 @@ func (h *handler) Sync(ctx context.Context) {
 
 	var newLocals []MockMapping
 	var toStore []MockMapping
+	logCount := make(map[string]int)
+
+	mm := make(map[string]bool)
 	for _, m := range h.mappings {
+		mm[m.Name()] = true
 		fs, found := fsMappings[m.Name()]
 		if found {
 			if fs.UpdateTime.After(m.UpdateTime) {
 				newLocals = append(newLocals, fs)
+				logCount["cUpd"] += 1
 			} else {
 				newLocals = append(newLocals, m)
 				toStore = append(toStore, m)
+				logCount["fsUpd"] += 1
 			}
 		} else {
 			toStore = append(toStore, m)
 			newLocals = append(newLocals, m)
+			logCount["fsNew"] += 1
 		}
 	}
+
+	for _, fs := range fsMappings {
+		if found := mm[fs.Name()]; !found {
+			newLocals = append(newLocals, fs)
+			logCount["cNew"] += 1
+		}
+	}
+
 	h.mappings = newLocals
 	h.saveMappings(ctx, toStore)
+	logjson.Info("total rules: %v, new in cache: %v, new in firestore: %v, updated in cache: %v, updated in firestore: %v", len(h.mappings), logCount["cNew"], logCount["fsNew"], logCount["cUpd"], logCount["fsUpd"])
 }
 
 func (h *handler) fetchMappings(ctx context.Context) map[string]MockMapping {
@@ -433,6 +447,7 @@ func (h *handler) listMappings(ctx context.Context, w http.ResponseWriter, _ *ht
 	h.Sync(ctx)
 	h.mux.Lock()
 	defer h.mux.Unlock()
+
 	resp := struct {
 		Mappings []MockMapping `json:"mappings"`
 	}{}

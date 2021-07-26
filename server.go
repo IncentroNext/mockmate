@@ -124,32 +124,34 @@ func (mr MockRule) matches(r *http.Request, body []byte) bool {
 		pathOk = mr.Path == r.URL.Path
 	}
 
-	headersOk := len(mr.QueryParams) == 0
+	headersOk := len(mr.Headers) == 0
 	if !headersOk {
-		for k, vs := range mr.Headers {
-			values := r.Header[k]
-			if len(vs) == len(values) {
-				sort.Strings(vs)
-				sort.Strings(values)
-				headersOk = true
-				for i := 0; headersOk && i < len(vs); i += 1 {
-					headersOk = vs[i] == values[i]
-				}
+		for k, needs := range mr.Headers {
+			has := r.Header[k]
+			sort.Strings(needs)
+			sort.Strings(has)
+			headersOk = len(needs) == len(has)
+			for i := 0; headersOk && i < len(needs); i += 1 {
+				headersOk = needs[i] == has[i]
+			}
+			if !headersOk {
+				break
 			}
 		}
 	}
 
 	paramsOk := len(mr.QueryParams) == 0
 	if !paramsOk {
-		for k, vs := range mr.QueryParams {
-			values := r.URL.Query()[k]
-			if len(vs) == len(values) {
-				sort.Strings(vs)
-				sort.Strings(values)
-				paramsOk = true
-				for i := 0; paramsOk && i < len(vs); i += 1 {
-					paramsOk = vs[i] == values[i]
-				}
+		for k, needs := range mr.QueryParams {
+			has := r.URL.Query()[k]
+			sort.Strings(needs)
+			sort.Strings(has)
+			paramsOk = len(needs) <= len(has)
+			for i := 0; paramsOk && i < len(needs); i += 1 {
+				paramsOk = needs[i] == has[i]
+			}
+			if !paramsOk {
+				break
 			}
 		}
 	}
@@ -234,8 +236,8 @@ func (h *handler) reset(ctx context.Context) {
 	for {
 		ds, err := iter.Next()
 		if ds != nil {
-			if _, err := h.client.Doc(ds.Ref.Path).Delete(ctx); err != nil {
-				logjson.Warn("could not delete rule %s", ds.Ref.Path)
+			if _, err := ds.Ref.Delete(ctx); err != nil {
+				logjson.Warn("could not delete rule %s: %s", ds.Ref.Path, err)
 			}
 		}
 		if err != nil {

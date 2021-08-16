@@ -28,6 +28,10 @@ To set a rule, POST a properly structured rule json to `/mockmate-mappings`.
 curl -d '{"rule": {"path":"/"}, "response": {"text_body": "Hello World\n"}}' \
     http://localhost:8080/mockmate-mappings
 
+# set a simple rule for '/json'
+curl -d '{"rule": {"path":"/json"}, "response": {"json_body": ["Hello JSON\n"]}}' \
+    http://localhost:8080/mockmate-mappings
+
 # sets a rule that applies to path '/re' and checks if the string 'foo' occurs in the body.
 curl -d '{"rule": {"path":"/re", "text_body_regex": ".*foo.*"}, "response": {"text_body": "REGEX OK\n"}}' \
     http://localhost:8080/mockmate-mappings
@@ -41,6 +45,9 @@ rule setting.
 ```shell
 $ curl http://localhost:8080/
 Hello World
+
+$ curl http://localhost:8080/json
+["Hello JSON"]
 
 $ curl -d 'i am a foo' http://localhost:8080/re
 REGEX OK

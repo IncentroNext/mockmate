@@ -167,12 +167,12 @@ func (mr MockRule) matches(r *http.Request, body []byte) bool {
 }
 
 type MockResponse struct {
-	ContentType string                 `json:"content_type,omitempty"`
-	TextBody    string                 `json:"text_body,omitempty"`
-	JsonBody    map[string]interface{} `json:"json_body,omitempty"`
-	BytesBody   []byte                 `json:"bytes_body,omitempty"`
-	StatusCode  int                    `json:"status_code"`
-	Headers     map[string][]string    `json:"headers,omitempty"`
+	ContentType string              `json:"content_type,omitempty"`
+	TextBody    string              `json:"text_body,omitempty"`
+	JsonBody    interface{}         `json:"json_body,omitempty"`
+	BytesBody   []byte              `json:"bytes_body,omitempty"`
+	StatusCode  int                 `json:"status_code"`
+	Headers     map[string][]string `json:"headers,omitempty"`
 }
 
 type SimpleRequest struct {

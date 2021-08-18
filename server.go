@@ -260,7 +260,13 @@ func (h *handler) Sync(ctx context.Context) {
 
 	var newLocals []MockMapping
 	var toStore []MockMapping
-	logCount := make(map[string]int)
+	const (
+		addToCache = iota
+		addToFirestore
+		updateCache
+		updateFirestore
+	)
+	logCount := make(map[int]int)
 
 	mm := make(map[string]bool)
 	for _, m := range h.mappings {
@@ -269,29 +275,30 @@ func (h *handler) Sync(ctx context.Context) {
 		if found {
 			if fs.UpdateTime.After(m.UpdateTime) {
 				newLocals = append(newLocals, fs)
-				logCount["cUpd"] += 1
+				logCount[updateCache] += 1
 			} else {
 				newLocals = append(newLocals, m)
 				toStore = append(toStore, m)
-				logCount["fsUpd"] += 1
+				logCount[updateFirestore] += 1
 			}
 		} else {
 			toStore = append(toStore, m)
 			newLocals = append(newLocals, m)
-			logCount["fsNew"] += 1
+			logCount[addToFirestore] += 1
 		}
 	}
 
 	for _, fs := range fsMappings {
 		if found := mm[fs.Name()]; !found {
 			newLocals = append(newLocals, fs)
-			logCount["cNew"] += 1
+			logCount[addToCache] += 1
 		}
 	}
 
 	h.mappings = newLocals
 	h.saveMappings(ctx, toStore)
-	logjson.Info("total rules: %v, new in cache: %v, new in firestore: %v, updated in cache: %v, updated in firestore: %v", len(h.mappings), logCount["cNew"], logCount["fsNew"], logCount["cUpd"], logCount["fsUpd"])
+	logjson.Info("total rules: %v, new in cache: %v, new in firestore: %v, updated in cache: %v, updated in firestore: %v",
+		len(h.mappings), logCount[addToCache], logCount[addToFirestore], logCount[updateCache], logCount[updateFirestore])
 }
 
 func (h *handler) fetchMappings(ctx context.Context) map[string]MockMapping {

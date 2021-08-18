@@ -336,10 +336,12 @@ func (h *handler) saveMappings(ctx context.Context, toStore []MockMapping) {
 }
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if strings.HasPrefix(r.URL.Path, "/mockmate-healthcheck") {
+	if r.URL.Path == "/mockmate-healthcheck" {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))
+		return
 	}
+
 	ctx := context.Background()
 	if strings.HasPrefix(r.URL.Path, "/mockmate-mappings") {
 		h.handleMockMateSettings(ctx, w, r)

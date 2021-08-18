@@ -32,6 +32,10 @@ curl -d '{"rule": {"path":"/"}, "response": {"text_body": "Hello World\n"}}' \
 curl -d '{"rule": {"path":"/json"}, "response": {"json_body": ["Hello JSON\n"]}}' \
     http://localhost:8080/mockmate-mappings
 
+# abuse text body and fill it with escaped json
+curl -d '{"rule": {"path":"/json-as-text"}, "response": {"text_body": "[\"Hello JSON\\n\"]"}}' \
+    http://localhost:8080/mockmate-mappings
+
 # sets a rule that applies to path '/re' and checks if the string 'foo' occurs in the body.
 curl -d '{"rule": {"path":"/re", "text_body_regex": ".*foo.*"}, "response": {"text_body": "REGEX OK\n"}}' \
     http://localhost:8080/mockmate-mappings
@@ -47,7 +51,10 @@ $ curl http://localhost:8080/
 Hello World
 
 $ curl http://localhost:8080/json
-["Hello JSON"]
+["Hello JSON\n"]
+
+$ curl http://localhost:8080/json-as-text
+["Hello JSON\n"]
 
 $ curl -d 'i am a foo' http://localhost:8080/re
 REGEX OK

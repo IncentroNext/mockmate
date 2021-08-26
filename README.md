@@ -25,8 +25,6 @@ To set a rule, POST a properly structured rule json to `/mockmate-mappings`.
 
 ```shell
 # set a simple rule for '/'
-curl -d '{"rule": {"path":"/"}, "response": {"text_body": "Hello World\n"}}' \
-    http://localhost:8080/mockmate-mappings
 
 # set a simple rule for '/json'
 curl -d '{"rule": {"path":"/json"}, "response": {"json_body": ["Hello JSON\n"]}}' \

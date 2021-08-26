@@ -192,9 +192,9 @@ type Recording struct {
 const collection = "services/mockmate/mapping"
 
 type handler struct {
-	mux      sync.Mutex
+	mux      sync.RWMutex
 	client   *firestore.Client
-	mappings []MockMapping
+	mappings map[string]MockMapping
 }
 
 func newHandler(ctx context.Context) (*handler, error) {
@@ -208,7 +208,9 @@ func newHandler(ctx context.Context) (*handler, error) {
 	if project == "" {
 		project = os.Getenv("GOOGLE_PROJECT")
 	}
-	h := &handler{}
+	h := &handler{
+		mappings: make(map[string]MockMapping),
+	}
 
 	if project == "" {
 		logjson.Warn("no project could be determined, cannot persist rules")
@@ -227,7 +229,7 @@ func (h *handler) reset(ctx context.Context) {
 	h.mux.Lock()
 	defer h.mux.Unlock()
 
-	h.mappings = nil
+	h.mappings = make(map[string]MockMapping)
 
 	if h.client == nil {
 		return
@@ -249,7 +251,10 @@ func (h *handler) reset(ctx context.Context) {
 	}
 }
 
-func (h *handler) Sync(ctx context.Context) {
+// refresh updates cached mappings with persisted mappings. The cached mappings
+// will only be updated with mappings that are either unknown or have a newer
+// update time.
+func (h *handler) refresh(ctx context.Context) {
 	if h.client == nil {
 		return
 	}
@@ -258,47 +263,22 @@ func (h *handler) Sync(ctx context.Context) {
 
 	fsMappings := h.fetchMappings(ctx)
 
-	var newLocals []MockMapping
-	var toStore []MockMapping
-	const (
-		addToCache = iota
-		addToFirestore
-		updateCache
-		updateFirestore
-	)
-	logCount := make(map[int]int)
-
-	mm := make(map[string]bool)
-	for _, m := range h.mappings {
-		mm[m.Name()] = true
-		fs, found := fsMappings[m.Name()]
-		if found {
-			if fs.UpdateTime.After(m.UpdateTime) {
-				newLocals = append(newLocals, fs)
-				logCount[updateCache] += 1
-			} else {
-				newLocals = append(newLocals, m)
-				toStore = append(toStore, m)
-				logCount[updateFirestore] += 1
-			}
-		} else {
-			toStore = append(toStore, m)
-			newLocals = append(newLocals, m)
-			logCount[addToFirestore] += 1
-		}
-	}
+	added := 0
+	updated := 0
 
 	for _, fs := range fsMappings {
-		if found := mm[fs.Name()]; !found {
-			newLocals = append(newLocals, fs)
-			logCount[addToCache] += 1
+		if m, found := h.mappings[fs.Name()]; found {
+			if fs.UpdateTime.After(m.UpdateTime) {
+				h.mappings[fs.Name()] = fs
+				updated += 1
+			}
+		} else {
+			h.mappings[fs.Name()] = fs
+			added += 1
 		}
 	}
 
-	h.mappings = newLocals
-	h.saveMappings(ctx, toStore)
-	logjson.Info("total rules: %v, new in cache: %v, new in firestore: %v, updated in cache: %v, updated in firestore: %v",
-		len(h.mappings), logCount[addToCache], logCount[addToFirestore], logCount[updateCache], logCount[updateFirestore])
+	logjson.Info("total rules: %v, new in cache: %v, updated in cache: %v", len(h.mappings), added, updated)
 }
 
 func (h *handler) fetchMappings(ctx context.Context) map[string]MockMapping {
@@ -324,14 +304,12 @@ func (h *handler) fetchMappings(ctx context.Context) map[string]MockMapping {
 	return fsMappings
 }
 
-func (h *handler) saveMappings(ctx context.Context, toStore []MockMapping) {
-	for _, m := range toStore {
-		docName := collection + "/" + m.Name()
-		if _, err := h.client.Doc(docName).Set(ctx, m); err != nil {
-			logjson.Warn("could not save mapping: %s", err)
-		} else {
-			logjson.Info("stored mapping %s", docName)
-		}
+func (h *handler) saveMapping(ctx context.Context, m *MockMapping) {
+	docName := collection + "/" + m.Name()
+	if _, err := h.client.Doc(docName).Set(ctx, m); err != nil {
+		logjson.Warn("could not save mapping: %s", err)
+	} else {
+		logjson.Info("stored mapping %s", docName)
 	}
 }
 
@@ -394,9 +372,9 @@ func (h *handler) handleMockMateSettings(ctx context.Context, w http.ResponseWri
 }
 
 func (h *handler) getMockResponse(ctx context.Context, r *http.Request) (MockResponse, bool) {
-	h.Sync(ctx)
-	h.mux.Lock()
-	defer h.mux.Unlock()
+	h.refresh(ctx)
+	h.mux.RLock()
+	defer h.mux.RUnlock()
 
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -441,36 +419,32 @@ func (h *handler) setMockMapping(ctx context.Context, r *http.Request) (*MockMap
 		m.Response.StatusCode = http.StatusOK
 	}
 
-	h.mux.Lock()
-	var newMappings []MockMapping
-	for _, existing := range h.mappings {
-		if existing.Name() != m.Name() {
-			newMappings = append(newMappings, existing)
-		}
-	}
-	newMappings = append(newMappings, *m)
-	h.mappings = newMappings
-	h.mux.Unlock()
+	h.refresh(ctx)
 
-	logjson.Info("cached mapping %s", m.Name())
-	h.Sync(ctx)
+	h.mux.Lock()
+	if _, found := h.mappings[m.Name()]; !found {
+		h.saveMapping(ctx, m)
+	}
+	h.mappings[m.Name()] = *m
+	h.mux.Unlock()
 
 	return m, nil
 }
 
 func (h *handler) listMappings(ctx context.Context, w http.ResponseWriter, _ *http.Request) {
-	h.Sync(ctx)
-	h.mux.Lock()
-	defer h.mux.Unlock()
+	h.refresh(ctx)
+	h.mux.RLock()
+	defer h.mux.RUnlock()
 
 	resp := struct {
 		Mappings []MockMapping `json:"mappings"`
 	}{}
-	if len(h.mappings) == 0 {
-		resp.Mappings = []MockMapping{}
-	} else {
-		resp.Mappings = h.mappings
+	resp.Mappings = []MockMapping{}
+	for _, m := range h.mappings {
+		resp.Mappings = append(resp.Mappings, m)
 	}
+	sort.Slice(resp.Mappings, func(i, j int) bool { return resp.Mappings[i].UpdateTime.Before(resp.Mappings[j].UpdateTime) })
+
 	bs, _ := json.Marshal(resp)
 	w.Header().Set("content-type", "application/json")
 	_, _ = w.Write(bs)

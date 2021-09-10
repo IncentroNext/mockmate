@@ -262,6 +262,11 @@ func (h *handler) refresh(ctx context.Context) {
 	defer h.mux.Unlock()
 
 	fsMappings := h.fetchMappings(ctx)
+	if len(fsMappings) == 0 {
+		logjson.Info("no rules in firestore, clearing rules cache")
+		h.mappings = make(map[string]MockMapping)
+		return
+	}
 
 	added := 0
 	updated := 0
@@ -298,7 +303,7 @@ func (h *handler) fetchMappings(ctx context.Context) map[string]MockMapping {
 			if err == iterator.Done {
 				break
 			}
-			logjson.Warn("error while persisting mappings: %s", err)
+			logjson.Warn("error while fetching mappings: %s", err)
 		}
 	}
 	return fsMappings
